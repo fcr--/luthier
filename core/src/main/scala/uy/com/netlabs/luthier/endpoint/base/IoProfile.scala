@@ -31,15 +31,18 @@
 package uy.com.netlabs.luthier.endpoint.base
 
 import scala.concurrent.ExecutionContext
-import java.util.concurrent.Executors
+import java.util.concurrent._
 
 trait IoProfile {
   def executionContext: ExecutionContext
   def dispose(): Unit
 }
 object IoProfile {
-  def threadPool(threads: Int) = new IoProfile {
-    val executor = Executors.newFixedThreadPool(threads)
+  def threadPool(threads: Int, threadPoolName: String) = new IoProfile {
+    val executor = Executors.newFixedThreadPool(threads, new ThreadFactory {
+        val count = new atomic.AtomicInteger
+        def newThread(r) = new Thread(r, threadPoolName + "-" + count.incrementAndGet)
+      })
     val executionContext = ExecutionContext.fromExecutor(executor)
     def dispose() {executor.shutdown()}
   }

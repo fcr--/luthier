@@ -102,7 +102,7 @@ trait Flow extends FlowPatterns with Disposable {
     instantiatedEndpoints.values foreach (_.dispose())
     instantiatedEndpoints = Map.empty
     appContext.actorSystem.stop(workerActors)
-    blockingExecutor.shutdown()
+    if (blockingExecutorInitialized) blockingExecutor.shutdown()
     if (logLifecycle) log.info("Flow " + name + " disposed")
   }
   /**
@@ -207,40 +207,47 @@ trait Flow extends FlowPatterns with Disposable {
    * Number of workers to allocate in the blocking workers pool.
    * Note that this threadpool is only instantiated if used by a call of blocking.
    */
-   var blockingWorkers: Int = 10
+  var blockingWorkers: Int = 10
+  @volatile private[this] var blockingExecutorInitialized = false
+  private lazy val blockingExecutor = {
+    blockingExecutorInitialized = true
+    import java.util.concurrent._
+    Executors.newFixedThreadPool(blockingWorkers, new ThreadFactory {
+        val count = new atomic.AtomicInteger
+        def newThread(r) = new Thread(r, name + "-" + count.incrementAndGet)
+      })
+  }
+  /**
+   * Private executor meant for IO
+   */
+  private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
 
-   private lazy val blockingExecutor = java.util.concurrent.Executors.newFixedThreadPool(blockingWorkers)
-   /**
-    * Private executor meant for IO
-    */
-   private lazy val blockingExecutorContext = ExecutionContext.fromExecutor(blockingExecutor)
+  /**
+   * Primitive to execute blocking code asynchronously without blocking
+   * the flow's worker.
+   *
+   * @returns A future for the computation
+   */
+  def blocking[R](code: => R): Future[R] = {
+    Future(code)(blockingExecutorContext)
+  }
+}
+object Flow {
+  class Work[R](val task: () => R) {
+    protected[Flow] val promise = Promise[R]()
+  }
 
-   /**
-    * Primitive to execute blocking code asynchronously without blocking
-    * the flow's worker.
-    *
-    * @returns A future for the computation
-    */
-   def blocking[R](code: => R): Future[R] = {
-      Future(code)(blockingExecutorContext)
-    }
-   }
-   object Flow {
-      class Work[R](val task: () => R) {
-        protected[Flow] val promise = Promise[R]()
-      }
+  import scala.reflect.macros.{ Context, Universe }
+  def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
+    import c.universe._
+    val collected = c.enclosingClass.collect {
+      case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
+        modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.luthier.RootMessage") &&
+        !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
+        paramName
+    }.head
+    val selectMessage = c.Expr(c.parse(collected.encoded))
+    reify(selectMessage.splice)
+  }
 
-      import scala.reflect.macros.{ Context, Universe }
-      def findNearestMessageMacro[F <: Flow](c: Context): c.Expr[RootMessage[F]] = {
-        import c.universe._
-        val collected = c.enclosingClass.collect {
-          case a @ Apply(Ident(i), List(Function(List(param @ ValDef(modifiers, paramName, _, _)), _))) if i.encoded == "logic" &&
-            modifiers.hasFlag(Flag.PARAM) && param.symbol.typeSignature.toString.startsWith("uy.com.netlabs.luthier.RootMessage") &&
-            !c.typeCheck(c.parse(paramName.encoded), param.symbol.typeSignature, silent = true).isEmpty =>
-            paramName
-        }.head
-        val selectMessage = c.Expr(c.parse(collected.encoded))
-        reify(selectMessage.splice)
-      }
-
-    }
+}
