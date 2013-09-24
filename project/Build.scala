@@ -50,8 +50,7 @@ object CocoonBuild extends Build {
     xmppEndpoint,
     ircEndpoint,
     wsutil,
-    luthierRunner,
-    veditor
+    luthierRunner
   ).settings(defSettings:_*)
   lazy val core = Project(id = "luthier-core", base = file("core")).settings(defSettings:_*)
   val coreAsDep = core % "compile->compile;test->test"
