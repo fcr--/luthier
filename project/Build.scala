@@ -34,7 +34,7 @@ object CocoonBuild extends Build {
     ),
     initialCommands in console += "import uy.com.netlabs.luthier._",
     publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath+"/.m2/repository")))
-  ) ++ Dist.settings
+  ) ++ Dist.settings ++ org.netbeans.sbtplugin.NbPlugin.nbsettings
 
   lazy val root = Project(id = "Luthier", base = file(".")).aggregate(
     core,
@@ -51,8 +51,7 @@ object CocoonBuild extends Build {
     ircEndpoint,
     sharedjmsEndpoint,
     wsutil,
-    luthierRunner,
-    veditor
+    luthierRunner
   ).settings(defSettings:_*)
   lazy val core = Project(id = "luthier-core", base = file("core")).settings(defSettings:_*)
   val coreAsDep = core % "compile->compile;test->test"
