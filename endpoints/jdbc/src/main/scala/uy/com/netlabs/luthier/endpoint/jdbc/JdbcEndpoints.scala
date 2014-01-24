@@ -37,7 +37,7 @@ import scala.reflect._
 import scala.concurrent.{ ExecutionContext, Future, duration }, duration._
 import scala.util.Try
 import typelist._
-
+import scala.collection.GenTraversableOnce
 /**
  * A pull endpoint that calls a prepared statement, be warned that for better throughput
  * you need a pooled datasource.
